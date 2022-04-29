@@ -13,10 +13,11 @@ const (
 	ActionTypeRun
 	ActionTypePause
 	ActionTypeContinue
+	ActionTypeSleep
 )
 
 func (t ActionTypeEnum) String() string {
-	return [...]string{"unknown", "run", "pause", "continue"}[t]
+	return [...]string{"unknown", "run", "pause", "continue", "sleep"}[t]
 }
 
 func (t *ActionTypeEnum) FromString(Action string) ActionTypeEnum {
@@ -25,6 +26,7 @@ func (t *ActionTypeEnum) FromString(Action string) ActionTypeEnum {
 		"run":      ActionTypeRun,
 		"pause":    ActionTypePause,
 		"continue": ActionTypeContinue,
+		"sleep":    ActionTypeSleep,
 	}[Action]
 }
 

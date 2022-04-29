@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"time"
 )
 
 type Instance struct {
@@ -21,6 +22,7 @@ type Action struct {
 	Type          ActionTypeEnum `json:"action,omitempty"`
 	File          string
 	TargetComment string
+	SleepDuration time.Duration `json:"duration,omitempty"`
 }
 
 type Config struct {

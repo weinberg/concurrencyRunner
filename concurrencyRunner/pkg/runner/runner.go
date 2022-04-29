@@ -3,6 +3,7 @@ package runner
 import (
 	"bufio"
 	"fmt"
+	"github.com/google/go-dap"
 	"github.com/weinberg/concurrencyRunner/pkg/client"
 	"github.com/weinberg/concurrencyRunner/pkg/config"
 	"log"
@@ -19,6 +20,11 @@ type InstanceAdapter struct {
 	Type     config.AdapterEnum
 	Url      string
 	ThreadId int
+	// Breakpoints stores the responses from setBreakpoints so we can
+	// report on which breakpoint was hit
+	Breakpoints map[int]dap.Breakpoint
+	// Instance is the instance from the config file
+	Instance config.Instance
 }
 
 type DelveAdapterData struct {
@@ -52,7 +58,7 @@ func Run(config *config.Config) (err error) {
 	if err != nil {
 		return
 	}
-	defer r.ShutdownClients()
+	defer r.Cleanup()
 
 	err = r.SetupInstances(config)
 	if err != nil {
@@ -64,6 +70,20 @@ func Run(config *config.Config) (err error) {
 		return err
 	}
 
+	return
+}
+
+/****************************************************
+ * Cleanup
+ ***************************************************/
+
+func (r *Runtime) Cleanup() (err error) {
+	for _, ia := range r.InstanceAdapters {
+		err = ia.Cmd.Process.Kill()
+		if err != nil {
+			fmt.Printf("Error killing instance '%s': %s\n", ia.Instance.Id, err)
+		}
+	}
 	return
 }
 
@@ -170,11 +190,13 @@ func (r *Runtime) SetBreakpoints(c *config.Config) (err error) {
 				return err
 			}
 			breakpoints := breakpointsResponse.Body.Breakpoints
+			//var i int
 			for _, response := range breakpointsResponse.Body.Breakpoints {
 				if response.Verified == false {
 					return fmt.Errorf("breakpoint could not be set in file '%s' at line '%d': %s",
 						file, response.Line, breakpointsResponse.Body.Breakpoints[0].Message)
 				}
+				r.InstanceAdapters[instanceId].Breakpoints[response.Id] = response
 			}
 			if len(breakpoints) != len(lines) {
 				return fmt.Errorf("all breakpoints could not be set in file '%s' at lines %v",
@@ -223,31 +245,83 @@ func findTargetComment(file string, comment string) (int, error) {
 
 func (r *Runtime) RunSequence(c *config.Config) (err error) {
 	for _, action := range c.Sequence {
-		fmt.Printf("%v", action)
 		switch action.Type {
 		case config.ActionTypeRun:
-			{
-				r.runAction(action)
-
-			}
+			r.actionRun(action)
 		case config.ActionTypePause:
-			{
-
-			}
+			r.actionPause(action)
 		case config.ActionTypeContinue:
-			{
-
-			}
+			r.actionContinue(action)
+		case config.ActionTypeSleep:
+			r.actionSleep(action)
 		}
 	}
 	return
 }
 
-func (r *Runtime) runAction(action config.Action) {
+func (r *Runtime) actionSleep(action config.Action) (err error) {
+	var suffix string = "s"
+	if action.SleepDuration == 1 {
+		suffix = ""
+	}
+	fmt.Printf("Instance All: SLEEPING %d second%s\n", action.SleepDuration, suffix)
+
+	time.Sleep(action.SleepDuration * time.Second)
+
+	return
+}
+
+func (r *Runtime) actionContinue(action config.Action) (err error) {
+	ia := r.InstanceAdapters[action.InstanceId]
+	cl := ia.Client
+
+	err = cl.ContinueRequest(ia.ThreadId)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Instance '%s': CONTINUE\n", action.InstanceId)
+
+	return
+}
+
+func (r *Runtime) actionPause(action config.Action) (err error) {
+	ia := r.InstanceAdapters[action.InstanceId]
+	cl := ia.Client
+
+	event, err := cl.ReadStoppedEvent()
+	if err != nil {
+		return err
+	}
+
+	for _, id := range event.Body.HitBreakpointIds {
+		fmt.Printf("Instance '%s': PAUSE at file '%s', line: %d\n",
+			action.InstanceId, ia.Breakpoints[id].Source.Path, ia.Breakpoints[id].Line)
+	}
+
+	return
+}
+
+func (r *Runtime) actionRun(action config.Action) (err error) {
+	ia := r.InstanceAdapters[action.InstanceId]
+	cl := ia.Client
+	err = cl.ContinueRequest(ia.ThreadId)
+	if err != nil {
+		return err
+	}
+
+	_, err = cl.ReadContinueResponse()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Instance '%s': RUN\n", action.InstanceId)
+
+	return
 }
 
 /****************************************************
- * Setup
+ * DAP Clients
  ***************************************************/
 
 // LaunchClients starts a DAP client for each instance
@@ -317,14 +391,6 @@ func (r *Runtime) LaunchClient(instance config.Instance) (*client.Client, error)
 	return cl, nil
 }
 
-func (r *Runtime) ShutdownClients() {
-	for _, ia := range r.InstanceAdapters {
-		if err := ia.Cmd.Process.Kill(); err != nil {
-			log.Fatal("failed to kill process: ", err)
-		}
-	}
-}
-
 func (r *Runtime) LaunchDAP(instance config.Instance) (err error) {
 	var instanceAdapter *InstanceAdapter
 	switch instance.Adapter {
@@ -337,6 +403,7 @@ func (r *Runtime) LaunchDAP(instance config.Instance) (err error) {
 		}
 	}
 
+	instanceAdapter.Instance = instance
 	r.InstanceAdapters[instance.Id] = instanceAdapter
 
 	return nil
@@ -344,7 +411,8 @@ func (r *Runtime) LaunchDAP(instance config.Instance) (err error) {
 
 func (r *Runtime) LaunchDelveAdapter(instance config.Instance) (instanceAdapter *InstanceAdapter, err error) {
 	instanceAdapter = &InstanceAdapter{
-		Type: config.AdapterDelve,
+		Type:        config.AdapterDelve,
+		Breakpoints: map[int]dap.Breakpoint{},
 	}
 	if r.DelveAdapterData == nil {
 		r.DelveAdapterData = NewDelveAdapterData()
