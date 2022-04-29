@@ -1,0 +1,58 @@
+{
+  "instances": [
+    {
+      "id": "1",
+      "name": "server process 1",
+      "adapter": "delve",
+      "program": "github.com/weinberg/concurrencyRunner/examples/cmd/readModifyWrite",
+      "env": "DATABASE_URL=postgres://postgres:pass@localhost:5433/postgres",
+      "cwd": "/Users/josh/dev/concurrencyRunner/examples",
+      "srcRoot": ""
+    },
+    {
+      "id": "2",
+      "name": "server process 2",
+      "adapter": "delve",
+      "program": "github.com/weinberg/concurrencyRunner/examples/cmd/readModifyWrite",
+      "env": "DATABASE_URL=postgres://postgres:pass@localhost:5433/postgres",
+      "cwd": "/Users/josh/dev/concurrencyRunner/examples",
+      "srcRoot": ""
+    }
+  ],
+  "sequence": [
+    {
+      "instanceId": "1",
+      "action": "run"
+    },
+    {
+      "instanceId": "1",
+      "action": "pause",
+      "file": "cmd/readModifyWrite/main.go",
+      "targetComment": "CL_PAUSE_1"
+    },
+    {
+      "instanceId": "2",
+      "action": "run"
+    },
+    {
+      "instanceId": "2",
+      "action": "pause",
+      "file": "cmd/readModifyWrite/main.go",
+      "targetComment": "CL_PAUSE_2"
+    },
+    {
+      "instanceId": "2",
+      "action": "continue"
+    },
+    {
+      "instanceId": "2",
+      "action": "pause",
+      "file": "cmd/readModifyWrite/main.go",
+      "targetComment": "CL_PAUSE_3"
+    },
+    {
+      "instanceId": "1",
+      "action": "continue"
+    }
+  ]
+}
