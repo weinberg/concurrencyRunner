@@ -14,10 +14,11 @@ import (
 )
 
 type InstanceAdapter struct {
-	Client *client.Client
-	Cmd    *exec.Cmd
-	Type   config.AdapterEnum
-	Url    string
+	Client   *client.Client
+	Cmd      *exec.Cmd
+	Type     config.AdapterEnum
+	Url      string
+	ThreadId int
 }
 
 type DelveAdapterData struct {
@@ -106,6 +107,22 @@ func (r *Runtime) CompleteSetup(c *config.Config) (err error) {
 		if err != nil {
 			return err
 		}
+
+		// Get threads
+		err = cl.ThreadsRequest()
+		if err != nil {
+			return err
+		}
+
+		threads, err := cl.ReadThreadsResponse()
+		if len(threads.Body.Threads) > 1 {
+			return fmt.Errorf("client has more than 1 thread: %d", len(threads.Body.Threads))
+		}
+		if err != nil {
+			return err
+		}
+
+		instance.ThreadId = threads.Body.Threads[0].Id
 	}
 
 	return
