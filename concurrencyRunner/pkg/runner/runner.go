@@ -53,7 +53,10 @@ func Run(config *config.Config) (err error) {
 	}
 	defer r.ShutdownClients()
 
-	err = r.SetBreakpoints(config)
+	err = r.SetupInstances(config)
+	if err != nil {
+		return err
+	}
 
 	err = r.RunSequence(config)
 	if err != nil {
@@ -64,8 +67,49 @@ func Run(config *config.Config) (err error) {
 }
 
 /****************************************************
- * Set Breakpoints
+ * Setup
  ***************************************************/
+
+func (r *Runtime) SetupInstances(c *config.Config) (err error) {
+	err = r.SetBreakpoints(c)
+	if err != nil {
+		return err
+	}
+
+	err = r.CompleteSetup(c)
+	return
+}
+
+func (r *Runtime) CompleteSetup(c *config.Config) (err error) {
+	for _, instance := range r.InstanceAdapters {
+		cl := instance.Client
+		// send configuration done
+		err = cl.ConfigurationDoneRequest()
+		if err != nil {
+			return err
+		}
+
+		// get stopped event - expected after launch
+		_, err = cl.ReadStoppedEvent()
+		if err != nil {
+			return err
+		}
+
+		// delve sends output event, ignore it
+		_, err = cl.ReadMessage()
+		if err != nil {
+			return err
+		}
+
+		// Configuration Done Response
+		_, err = cl.ReadConfigurationDoneResponse()
+		if err != nil {
+			return err
+		}
+	}
+
+	return
+}
 
 // SetBreakpoints sets breakpoints in all instances
 func (r *Runtime) SetBreakpoints(c *config.Config) (err error) {
@@ -100,7 +144,7 @@ func (r *Runtime) SetBreakpoints(c *config.Config) (err error) {
 	for instanceId, bpData := range breakpoints {
 		c := r.InstanceAdapters[instanceId].Client
 		for file, lines := range bpData {
-			c.SetBreakpointsRequestWithArgs(file, lines, nil, nil, nil)
+			err := c.SetBreakpointsRequestWithArgs(file, lines, nil, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -111,12 +155,12 @@ func (r *Runtime) SetBreakpoints(c *config.Config) (err error) {
 			breakpoints := breakpointsResponse.Body.Breakpoints
 			for _, response := range breakpointsResponse.Body.Breakpoints {
 				if response.Verified == false {
-					return fmt.Errorf("Breakpoint could not be set in file '%s' at line '%d': %s",
+					return fmt.Errorf("breakpoint could not be set in file '%s' at line '%d': %s",
 						file, response.Line, breakpointsResponse.Body.Breakpoints[0].Message)
 				}
 			}
 			if len(breakpoints) != len(lines) {
-				return fmt.Errorf("All breakpoints could not be set in file '%s' at lines %v",
+				return fmt.Errorf("all breakpoints could not be set in file '%s' at lines %v",
 					file, lines)
 			}
 		}
@@ -130,7 +174,12 @@ func findTargetComment(file string, comment string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(f)
 
 	// Splits on newlines by default.
 	scanner := bufio.NewScanner(f)
@@ -161,6 +210,7 @@ func (r *Runtime) RunSequence(c *config.Config) (err error) {
 		switch action.Type {
 		case config.ActionTypeRun:
 			{
+				r.runAction(action)
 
 			}
 		case config.ActionTypePause:
@@ -176,6 +226,9 @@ func (r *Runtime) RunSequence(c *config.Config) (err error) {
 	return
 }
 
+func (r *Runtime) runAction(action config.Action) {
+}
+
 /****************************************************
  * Setup
  ***************************************************/
@@ -183,11 +236,11 @@ func (r *Runtime) RunSequence(c *config.Config) (err error) {
 // LaunchClients starts a DAP client for each instance
 func (r *Runtime) LaunchClients(config *config.Config) (err error) {
 	for _, instance := range config.Instances {
-		client, err := r.LaunchClient(instance)
+		cl, err := r.LaunchClient(instance)
 		if err != nil {
 			return err
 		}
-		r.InstanceAdapters[instance.Id].Client = client
+		r.InstanceAdapters[instance.Id].Client = cl
 	}
 	return
 }
@@ -201,30 +254,30 @@ func (r *Runtime) LaunchClient(instance config.Instance) (*client.Client, error)
 
 	// create client
 	clientUrl := r.InstanceAdapters[instance.Id].Url
-	client, err := client.NewClient(clientUrl)
+	cl, err := client.NewClient(clientUrl)
 	if err != nil {
 		return nil, err
 	}
 
 	// initialize
-	_, err = client.Initialize()
+	_, err = cl.Initialize()
 	if err != nil {
 		return nil, err
 	}
 
 	// extract env vars
-	var envVars map[string]string = make(map[string]string)
+	envVars := make(map[string]string)
 	envKvs := strings.Split(instance.Env, ";")
 	for _, envKv := range envKvs {
 		kv := strings.Split(envKv, "=")
 		if kv[0] == "" || kv[1] == "" {
-			return nil, fmt.Errorf("Invalid env string: %s", instance.Env)
+			return nil, fmt.Errorf("invalid env string: %s", instance.Env)
 		}
 		envVars[kv[0]] = kv[1]
 	}
 
 	// launch debugee
-	err = client.LaunchRequestWithArgs(map[string]interface{}{
+	err = cl.LaunchRequestWithArgs(map[string]interface{}{
 		"request":     "launch",
 		"mode":        "debug",
 		"program":     instance.Program,
@@ -233,18 +286,18 @@ func (r *Runtime) LaunchClient(instance config.Instance) (*client.Client, error)
 		"dlvCwd":      instance.Cwd,
 	})
 	// initialized event
-	_, err = client.ReadInitializedEvent()
+	_, err = cl.ReadInitializedEvent()
 	if err != nil {
 		return nil, err
 	}
 
 	// launch response comes after initialized event
-	_, err = client.ReadLaunchResponse()
+	_, err = cl.ReadLaunchResponse()
 	if err != nil {
 		return nil, err
 	}
 
-	return client, nil
+	return cl, nil
 }
 
 func (r *Runtime) ShutdownClients() {
