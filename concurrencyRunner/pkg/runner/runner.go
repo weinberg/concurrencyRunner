@@ -111,22 +111,13 @@ func (r *Runtime) CompleteSetup(c *config.Config) (err error) {
 		}
 
 		// get stopped event - expected after launch
-		_, err = cl.ReadStoppedEvent()
-		if err != nil {
-			return err
-		}
+		<-cl.Events
 
 		// delve sends output event, ignore it
-		_, err = cl.ReadMessage()
-		if err != nil {
-			return err
-		}
+		<-cl.Events
 
 		// Configuration Done Response
-		_, err = cl.ReadConfigurationDoneResponse()
-		if err != nil {
-			return err
-		}
+		<-cl.Responses
 
 		// Get threads
 		err = cl.ThreadsRequest()
@@ -134,15 +125,18 @@ func (r *Runtime) CompleteSetup(c *config.Config) (err error) {
 			return err
 		}
 
-		threads, err := cl.ReadThreadsResponse()
-		if len(threads.Body.Threads) > 1 {
-			return fmt.Errorf("client has more than 1 thread: %d", len(threads.Body.Threads))
-		}
-		if err != nil {
-			return err
-		}
+		response := <-cl.Responses
+		fmt.Printf("%v+\n", response)
+		/*
+			if len(threads.Body.Threads) > 1 {
+				return fmt.Errorf("client has more than 1 thread: %d", len(threads.Body.Threads))
+			}
+			if err != nil {
+				return err
+			}
 
-		instance.ThreadId = threads.Body.Threads[0].Id
+			instance.ThreadId = threads.Body.Threads[0].Id
+		*/
 	}
 
 	return
@@ -257,6 +251,13 @@ func (r *Runtime) RunSequence(c *config.Config) (err error) {
 		}
 	}
 	return
+}
+
+func (r *Runtime) drainEvents() {
+	for _, ia := range r.InstanceAdapters {
+		ia.Client.ReadMessage()
+
+	}
 }
 
 func (r *Runtime) actionSleep(action config.Action) (err error) {
@@ -376,7 +377,6 @@ func (r *Runtime) LaunchClient(instance config.Instance) (*client.Client, error)
 		"env":         envVars,
 		"dlvCwd":      instance.Cwd,
 	})
-	// initialized event
 	_, err = cl.ReadInitializedEvent()
 	if err != nil {
 		return nil, err

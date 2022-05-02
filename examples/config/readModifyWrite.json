@@ -35,24 +35,16 @@
       "action": "run"
     },
     {
-      "instanceId": "2",
-      "action": "pause",
-      "file": "cmd/readModifyWrite/main.go",
-      "targetComment": "CL_PAUSE_2"
-    },
-    {
-      "instanceId": "2",
-      "action": "continue"
-    },
-    {
-      "instanceId": "2",
-      "action": "pause",
-      "file": "cmd/readModifyWrite/main.go",
-      "targetComment": "CL_PAUSE_3"
+      "action": "sleep",
+      "duration": 1
     },
     {
       "instanceId": "1",
       "action": "continue"
+    },
+    {
+      "action": "sleep",
+      "duration": 1
     }
   ]
 }

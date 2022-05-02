@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-dap"
 	"net"
 	"path/filepath"
+	"reflect"
 )
 
 // This client code is from the Delve test suite
@@ -22,17 +23,45 @@ type Client struct {
 	// requests that the client sends to the readModifyWrite
 	seq                int
 	initializeResponse dap.Message
+	Events             chan dap.Message
+	Responses          chan dap.Message
 }
 
 // NewClient creates a new Client over a TCP connection.
 // Call Close() to close the connection.
-func NewClient(addr string) (client *Client, err error) {
+func NewClient(addr string) (cl *Client, err error) {
 	fmt.Println("Connecting to readModifyWrite at:", addr)
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("dialing %s", err)
 	}
-	return NewClientFromConn(conn), nil
+	cl = NewClientFromConn(conn)
+
+	go ReadMessageLoop(cl)
+
+	return
+}
+
+func ReadMessageLoop(cl *Client) {
+	for {
+		message, err := cl.ReadMessage()
+		if err != nil {
+			fmt.Printf("Error reading from debug adapter: %v\n", err)
+		} else {
+			messageType := reflect.TypeOf(message)
+
+			if messageType.Implements(reflect.TypeOf((*dap.ResponseMessage)(nil)).Elem()) {
+				fmt.Printf("Response: %s\n", reflect.TypeOf(message))
+				cl.Responses <- message
+			} else if messageType.Implements(reflect.TypeOf((*dap.EventMessage)(nil)).Elem()) {
+				fmt.Printf("Event: %s\n", reflect.TypeOf(message))
+				cl.Events <- message
+			} else if messageType.Implements(reflect.TypeOf((*dap.RequestMessage)(nil)).Elem()) {
+				fmt.Printf("Request: %s\n", reflect.TypeOf(message))
+				// todo
+			}
+		}
+	}
 }
 
 // NewClientFromConn creates a new Client with the given TCP connection.
@@ -40,6 +69,8 @@ func NewClient(addr string) (client *Client, err error) {
 func NewClientFromConn(conn net.Conn) *Client {
 	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
 	c.seq = 1 // match VS Code numbering
+	c.Events = make(chan dap.Message, 10)
+	c.Responses = make(chan dap.Message, 10)
 	return c
 }
 
@@ -78,20 +109,18 @@ func (c *Client) Initialize() (dap.Message, error) {
 		return nil, err
 	}
 
-	response, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
+	r := <-c.Responses
 
-	c.initializeResponse = response
-	return response, nil
+	c.initializeResponse = r
+	return r, nil
 }
 
 // InitializeRequestWithArgs sends an 'initialize' request with specified arguments.
-func (c *Client) InitializeRequestWithArgs(args dap.InitializeRequestArguments) {
+func (c *Client) InitializeRequestWithArgs(args dap.InitializeRequestArguments) (err error) {
 	request := &dap.InitializeRequest{Request: *c.newRequest("initialize")}
 	request.Arguments = args
-	c.send(request)
+	err = c.send(request)
+	return
 }
 
 func toRawMessage(in interface{}) json.RawMessage {
@@ -100,7 +129,7 @@ func toRawMessage(in interface{}) json.RawMessage {
 }
 
 // LaunchRequest sends a 'launch' request with the specified args.
-func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
+func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) (err error) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
 	request.Arguments = toRawMessage(map[string]interface{}{
 		"request":     "launch",
@@ -108,7 +137,8 @@ func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
 		"program":     program,
 		"stopOnEntry": stopOnEntry,
 	})
-	c.send(request)
+	err = c.send(request)
+	return
 }
 
 // LaunchRequestWithArgs takes a map of untyped implementation-specific
@@ -490,11 +520,7 @@ func (c *Client) newRequest(command string) *dap.Request {
 }
 
 func (c *Client) ReadInitializedEvent() (*dap.InitializedEvent, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Events
 	r, ok := m.(*dap.InitializedEvent)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.InitializedEvent:\n %v+", m)
@@ -503,11 +529,7 @@ func (c *Client) ReadInitializedEvent() (*dap.InitializedEvent, error) {
 }
 
 func (c *Client) ReadLaunchResponse() (*dap.LaunchResponse, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Responses
 	r, ok := m.(*dap.LaunchResponse)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.LaunchResponse")
@@ -516,11 +538,7 @@ func (c *Client) ReadLaunchResponse() (*dap.LaunchResponse, error) {
 }
 
 func (c *Client) ReadSetBreakpointsResponse() (*dap.SetBreakpointsResponse, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Responses
 	r, ok := m.(*dap.SetBreakpointsResponse)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.SetBreakpointsResponse")
@@ -529,11 +547,7 @@ func (c *Client) ReadSetBreakpointsResponse() (*dap.SetBreakpointsResponse, erro
 }
 
 func (c *Client) ReadStoppedEvent() (*dap.StoppedEvent, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Events
 	r, ok := m.(*dap.StoppedEvent)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.StoppedEvent")
@@ -542,11 +556,7 @@ func (c *Client) ReadStoppedEvent() (*dap.StoppedEvent, error) {
 }
 
 func (c *Client) ReadConfigurationDoneResponse() (*dap.ConfigurationDoneResponse, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Responses
 	r, ok := m.(*dap.ConfigurationDoneResponse)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.ConfigurationDoneResponse")
@@ -555,11 +565,7 @@ func (c *Client) ReadConfigurationDoneResponse() (*dap.ConfigurationDoneResponse
 }
 
 func (c *Client) ReadContinueResponse() (*dap.ContinueResponse, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Responses
 	r, ok := m.(*dap.ContinueResponse)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.ContinueResponse")
@@ -568,11 +574,7 @@ func (c *Client) ReadContinueResponse() (*dap.ContinueResponse, error) {
 }
 
 func (c *Client) ReadThreadsResponse() (*dap.ThreadsResponse, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Responses
 	r, ok := m.(*dap.ThreadsResponse)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.ThreadsResponse")
@@ -581,11 +583,7 @@ func (c *Client) ReadThreadsResponse() (*dap.ThreadsResponse, error) {
 }
 
 func (c *Client) ReadTerminatedEvent() (*dap.TerminatedEvent, error) {
-	m, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
-	}
-
+	m := <-c.Events
 	r, ok := m.(*dap.TerminatedEvent)
 	if !ok {
 		return nil, fmt.Errorf("Read a message but it was not a dap.TerminatedEvent")
