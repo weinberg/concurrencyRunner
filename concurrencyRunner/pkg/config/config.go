@@ -15,6 +15,7 @@ type Instance struct {
 	Env     string
 	Cwd     string
 	SrcRoot string
+	Args    []string
 }
 
 type Action struct {

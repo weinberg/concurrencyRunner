@@ -1,5 +1,3 @@
-
-
 CREATE TABLE IF NOT EXISTS users
 (
     id   serial
@@ -28,4 +26,11 @@ CREATE TABLE IF NOT EXISTS email
 
 CREATE UNIQUE INDEX IF NOT EXISTS email_id_uindex ON email (id);
 
+CREATE TABLE IF NOT EXISTS accounts
+(
+    id      serial
+        CONSTRAINT accounts_pk PRIMARY KEY,
+    name    text,
+    balance float
+);
 

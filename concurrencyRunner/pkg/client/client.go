@@ -30,7 +30,7 @@ type Client struct {
 // NewClient creates a new Client over a TCP connection.
 // Call Close() to close the connection.
 func NewClient(addr string) (cl *Client, err error) {
-	fmt.Println("Connecting to readModifyWrite at:", addr)
+	// fmt.Println("Connecting to client at:", addr)
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("dialing %s", err)
@@ -51,13 +51,14 @@ func ReadMessageLoop(cl *Client) {
 			messageType := reflect.TypeOf(message)
 
 			if messageType.Implements(reflect.TypeOf((*dap.ResponseMessage)(nil)).Elem()) {
-				fmt.Printf("Response: %s\n", reflect.TypeOf(message))
+				// fmt.Printf("Response: %s\n", reflect.TypeOf(message))
 				cl.Responses <- message
 			} else if messageType.Implements(reflect.TypeOf((*dap.EventMessage)(nil)).Elem()) {
-				fmt.Printf("Event: %s\n", reflect.TypeOf(message))
+				// fmt.Printf("Event   : %s\n", reflect.TypeOf(message))
+				// fmt.Printf("OUTPUT: %v+", message)
 				cl.Events <- message
 			} else if messageType.Implements(reflect.TypeOf((*dap.RequestMessage)(nil)).Elem()) {
-				fmt.Printf("Request: %s\n", reflect.TypeOf(message))
+				// fmt.Printf("Request : %s\n", reflect.TypeOf(message))
 				// todo
 			}
 		}
@@ -76,7 +77,7 @@ func NewClientFromConn(conn net.Conn) *Client {
 
 // Close closes the client connection.
 func (c *Client) Close() {
-	c.conn.Close()
+	_ = c.conn.Close()
 }
 
 func (c *Client) send(request dap.Message) error {

@@ -6,6 +6,7 @@ import (
 	"github.com/google/go-dap"
 	"github.com/weinberg/concurrencyRunner/pkg/client"
 	"github.com/weinberg/concurrencyRunner/pkg/config"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -81,7 +82,7 @@ func (r *Runtime) Cleanup() (err error) {
 	for _, ia := range r.InstanceAdapters {
 		err = ia.Cmd.Process.Kill()
 		if err != nil {
-			fmt.Printf("Error killing instance '%s': %s\n", ia.Instance.Id, err)
+			fmt.Printf("Error killing instance '%s': %s\n", ia.Instance.Name, err)
 		}
 	}
 	return
@@ -125,8 +126,7 @@ func (r *Runtime) CompleteSetup(c *config.Config) (err error) {
 			return err
 		}
 
-		response := <-cl.Responses
-		fmt.Printf("%v+\n", response)
+		<-cl.Responses
 		/*
 			if len(threads.Body.Threads) > 1 {
 				return fmt.Errorf("client has more than 1 thread: %d", len(threads.Body.Threads))
@@ -256,7 +256,6 @@ func (r *Runtime) RunSequence(c *config.Config) (err error) {
 func (r *Runtime) drainEvents() {
 	for _, ia := range r.InstanceAdapters {
 		ia.Client.ReadMessage()
-
 	}
 }
 
@@ -265,7 +264,7 @@ func (r *Runtime) actionSleep(action config.Action) (err error) {
 	if action.SleepDuration == 1 {
 		suffix = ""
 	}
-	fmt.Printf("Instance All: SLEEPING %d second%s\n", action.SleepDuration, suffix)
+	fmt.Printf("Instance All SLEEPING %d second%s\n", action.SleepDuration, suffix)
 
 	time.Sleep(action.SleepDuration * time.Second)
 
@@ -281,7 +280,7 @@ func (r *Runtime) actionContinue(action config.Action) (err error) {
 		return err
 	}
 
-	fmt.Printf("Instance '%s': CONTINUE\n", action.InstanceId)
+	fmt.Printf("Instance '%s' CONTINUE\n", ia.Instance.Name)
 
 	return
 }
@@ -296,8 +295,8 @@ func (r *Runtime) actionPause(action config.Action) (err error) {
 	}
 
 	for _, id := range event.Body.HitBreakpointIds {
-		fmt.Printf("Instance '%s': PAUSE at file '%s', line: %d\n",
-			action.InstanceId, ia.Breakpoints[id].Source.Path, ia.Breakpoints[id].Line)
+		fmt.Printf("Instance '%s' PAUSE at file '%s', line: %d\n",
+			ia.Instance.Name, ia.Breakpoints[id].Source.Path, ia.Breakpoints[id].Line)
 	}
 
 	return
@@ -316,7 +315,7 @@ func (r *Runtime) actionRun(action config.Action) (err error) {
 		return err
 	}
 
-	fmt.Printf("Instance '%s': RUN\n", action.InstanceId)
+	fmt.Printf("Instance '%s' RUN\n", ia.Instance.Name)
 
 	return
 }
@@ -376,6 +375,7 @@ func (r *Runtime) LaunchClient(instance config.Instance) (*client.Client, error)
 		"stopOnEntry": true,
 		"env":         envVars,
 		"dlvCwd":      instance.Cwd,
+		"args":        instance.Args,
 	})
 	_, err = cl.ReadInitializedEvent()
 	if err != nil {
@@ -409,6 +409,17 @@ func (r *Runtime) LaunchDAP(instance config.Instance) (err error) {
 	return nil
 }
 
+func childOutputToStdout(instance config.Instance, stdout io.ReadCloser) {
+	for {
+		tmp := make([]byte, 1024)
+		_, err := stdout.Read(tmp)
+		fmt.Printf("Instance '%s' STDOUT: %s", instance.Name, string(tmp))
+		if err != nil {
+			break
+		}
+	}
+}
+
 func (r *Runtime) LaunchDelveAdapter(instance config.Instance) (instanceAdapter *InstanceAdapter, err error) {
 	instanceAdapter = &InstanceAdapter{
 		Type:        config.AdapterDelve,
@@ -420,11 +431,18 @@ func (r *Runtime) LaunchDelveAdapter(instance config.Instance) (instanceAdapter 
 	instanceAdapter.Url = fmt.Sprintf("%s:%d", r.DelveAdapterData.Hostname, r.DelveAdapterData.NextPort)
 	r.DelveAdapterData.NextPort++
 
-	cmd := exec.Command("dlv", "dap", "--wd", instance.Cwd, "--listen", instanceAdapter.Url)
+	cmd := exec.Command("dlv", "dap", "--listen", instanceAdapter.Url)
+	stdout, err := cmd.StdoutPipe()
+	cmd.Stderr = cmd.Stdout
+	if err != nil {
+		log.Fatalf("LaunchDelveAdapter: cannot start delve: %s", err.Error())
+	}
 	err = cmd.Start()
 	if err != nil {
 		log.Fatalf("LaunchDelveAdapter: cannot start delve: %s", err.Error())
 	}
+
+	go childOutputToStdout(instance, stdout)
 
 	instanceAdapter.Cmd = cmd
 
