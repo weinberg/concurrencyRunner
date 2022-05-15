@@ -2,20 +2,22 @@ package config
 
 import (
 	"encoding/json"
+	"github.com/gookit/color"
 	"io/ioutil"
 	"os"
 	"time"
 )
 
 type Instance struct {
-	Id      string
-	Name    string
-	Adapter AdapterEnum
-	Program string
-	Env     string
-	Cwd     string
-	SrcRoot string
-	Args    []string
+	Id       string
+	Name     string
+	Adapter  AdapterEnum
+	Program  string
+	Env      string
+	Cwd      string
+	SrcRoot  string
+	Args     []string
+	OutputBg color.Color
 }
 
 type Action struct {

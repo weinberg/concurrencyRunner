@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/google/go-dap"
+	"github.com/gookit/color"
 	"github.com/weinberg/concurrencyRunner/pkg/client"
 	"github.com/weinberg/concurrencyRunner/pkg/config"
 	"io"
@@ -39,6 +40,14 @@ type Runtime struct {
 	// adapter specific data
 	DelveAdapterData *DelveAdapterData
 }
+
+var instanceColors []color.Color = []color.Color{
+	23,
+	22,
+	88,
+}
+
+const PREFIX_WIDTH int = 10
 
 func NewRuntime() *Runtime {
 	return &Runtime{
@@ -264,7 +273,9 @@ func (r *Runtime) actionSleep(action config.Action) (err error) {
 	if action.SleepDuration == 1 {
 		suffix = ""
 	}
-	fmt.Printf("Instance All SLEEPING %d second%s\n", action.SleepDuration, suffix)
+	printPrefix(nil)
+	c := color.C256(247)
+	c.Printf("ACTION: SLEEP %d second%s\n", action.SleepDuration, suffix)
 
 	time.Sleep(action.SleepDuration * time.Second)
 
@@ -280,7 +291,9 @@ func (r *Runtime) actionContinue(action config.Action) (err error) {
 		return err
 	}
 
-	fmt.Printf("Instance '%s' CONTINUE\n", ia.Instance.Name)
+	printPrefix(&ia.Instance)
+	c := color.C256(247)
+	c.Printf("ACTION: CONTINUE\n")
 
 	return
 }
@@ -295,8 +308,10 @@ func (r *Runtime) actionPause(action config.Action) (err error) {
 	}
 
 	for _, id := range event.Body.HitBreakpointIds {
-		fmt.Printf("Instance '%s' PAUSE at file '%s', line: %d\n",
-			ia.Instance.Name, ia.Breakpoints[id].Source.Path, ia.Breakpoints[id].Line)
+		printPrefix(&ia.Instance)
+		c := color.C256(247)
+		c.Printf("ACTION: PAUSE at file '%s', line: %d\n",
+			ia.Breakpoints[id].Source.Path, ia.Breakpoints[id].Line)
 	}
 
 	return
@@ -315,8 +330,25 @@ func (r *Runtime) actionRun(action config.Action) (err error) {
 		return err
 	}
 
-	fmt.Printf("Instance '%s' RUN\n", ia.Instance.Name)
+	printPrefix(&ia.Instance)
+	c := color.C256(247)
+	c.Printf("ACTION: RUN\n")
+	return
+}
 
+func printPrefix(instance *config.Instance) {
+	fmt.Printf(getPrefix(instance))
+}
+
+func getPrefix(instance *config.Instance) (prefix string) {
+	c := color.C256(234, true)
+	name := "ALL"
+	if instance != nil {
+		c = color.C256(uint8(instance.OutputBg), true) // bg color
+		name = instance.Name
+	}
+	prefix = c.Sprintf("%-*.*s", PREFIX_WIDTH, PREFIX_WIDTH, name)
+	prefix += " "
 	return
 }
 
@@ -326,7 +358,10 @@ func (r *Runtime) actionRun(action config.Action) (err error) {
 
 // LaunchClients starts a DAP client for each instance
 func (r *Runtime) LaunchClients(config *config.Config) (err error) {
-	for _, instance := range config.Instances {
+	for i, instance := range config.Instances {
+		if instance.OutputBg == 0 {
+			instance.OutputBg = instanceColors[i%len(instanceColors)]
+		}
 		cl, err := r.LaunchClient(instance)
 		if err != nil {
 			return err
@@ -413,7 +448,22 @@ func childOutputToStdout(instance config.Instance, stdout io.ReadCloser) {
 	for {
 		tmp := make([]byte, 1024)
 		_, err := stdout.Read(tmp)
-		fmt.Printf("Instance '%s' STDOUT: %s", instance.Name, string(tmp))
+		tmpString := string(tmp)
+
+		if strings.HasPrefix(tmpString, "DAP server") {
+			continue
+		}
+
+		prefix := getPrefix(&instance)
+		fmt.Printf(prefix)
+
+		nls := strings.Count(tmpString, "\n")
+		label := "STDOUT: "
+		spaces := strings.Repeat(" ", len(label))
+		tmpString = strings.Replace(tmpString, "\n", "\n"+prefix+spaces, nls-1)
+		c := color.C256(247)
+		label = c.Sprintf("%s", label)
+		fmt.Printf("%s%s", label, tmpString)
 		if err != nil {
 			break
 		}

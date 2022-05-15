@@ -2,7 +2,7 @@
   "instances": [
     {
       "id": "1",
-      "name": "server process 1",
+      "name": "process 1",
       "adapter": "delve",
       "program": "github.com/weinberg/concurrencyRunner/examples/cmd/readModifyWrite",
       "env": "DATABASE_URL=postgres://postgres:pass@localhost:5433/postgres",
@@ -11,7 +11,7 @@
     },
     {
       "id": "2",
-      "name": "server process 2",
+      "name": "process 2",
       "adapter": "delve",
       "program": "github.com/weinberg/concurrencyRunner/examples/cmd/readModifyWrite",
       "env": "DATABASE_URL=postgres://postgres:pass@localhost:5433/postgres",
