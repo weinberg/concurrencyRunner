@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"github.com/google/go-dap"
 	"github.com/gookit/color"
@@ -448,6 +449,11 @@ func childOutputToStdout(instance config.Instance, stdout io.ReadCloser) {
 	for {
 		tmp := make([]byte, 1024)
 		_, err := stdout.Read(tmp)
+		// Remove any NULL characters from 'b'
+		tmp = bytes.Trim(tmp, "\x00")
+		if bytes.HasSuffix(tmp, []byte("\n")) {
+			tmp = bytes.Trim(tmp, "\n")
+		}
 		tmpString := string(tmp)
 
 		if strings.HasPrefix(tmpString, "DAP server") {
@@ -455,15 +461,14 @@ func childOutputToStdout(instance config.Instance, stdout io.ReadCloser) {
 		}
 
 		prefix := getPrefix(&instance)
-		fmt.Printf(prefix)
-
-		nls := strings.Count(tmpString, "\n")
 		label := "STDOUT: "
-		spaces := strings.Repeat(" ", len(label))
-		tmpString = strings.Replace(tmpString, "\n", "\n"+prefix+spaces, nls-1)
 		c := color.C256(247)
 		label = c.Sprintf("%s", label)
-		fmt.Printf("%s%s", label, tmpString)
+		prefix = prefix + label
+
+		tmpString = strings.Replace(tmpString, "\n", "\n"+prefix, -1)
+
+		fmt.Printf("%s%s\n", prefix, tmpString)
 		if err != nil {
 			break
 		}

@@ -28,7 +28,6 @@ func readModifyWrite(conn *pgx.Conn) error {
 		return err
 	}
 
-	fmt.Printf("READ\n")
 	err = tx.QueryRow(ctx,
 		`SELECT unread FROM user_email_stats where user_id = $1
 	`, userId).Scan(&unreadCount)
@@ -36,11 +35,12 @@ func readModifyWrite(conn *pgx.Conn) error {
 		tx.Rollback(ctx)
 		return fmt.Errorf("QueryRow failed: %v\n", err)
 	}
+	fmt.Printf("READ: unreadCount = %d\n", unreadCount)
 
-	fmt.Printf("MODIFY\n") // CL_PAUSE_1
 	unreadCount++
+	fmt.Printf("MODIFY: adding 1 to unreadCount, now it is %d\n", unreadCount)
 
-	fmt.Printf("WRITE\n")
+	fmt.Printf("WRITE: unreadCount = %d\n", unreadCount) // CL_PAUSE_1
 	_, err = tx.Exec(ctx, `UPDATE user_email_stats set unread = $1 where user_id = $2`, unreadCount, userId)
 	if err != nil {
 		tx.Rollback(ctx)

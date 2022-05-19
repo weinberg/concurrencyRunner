@@ -2,7 +2,7 @@
   "instances": [
     {
       "id": "1",
-      "name": "Alice",
+      "name": "Reader",
       "adapter": "delve",
       "program": "github.com/weinberg/concurrencyRunner/examples/cmd/readSkew",
       "args": ["-user","alice"],
@@ -12,7 +12,7 @@
     },
     {
       "id": "2",
-      "name": "Bob  ",
+      "name": "Writer",
       "adapter": "delve",
       "program": "github.com/weinberg/concurrencyRunner/examples/cmd/readSkew",
       "args": ["-user","bob"],

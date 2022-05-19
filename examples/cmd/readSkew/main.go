@@ -33,7 +33,7 @@ func alice(conn *pgx.Conn) error {
 		return err
 	}
 
-	fmt.Printf("READ account Alice1\n")
+	fmt.Printf("READ account balances...\n")
 	var alice1Balance float64
 	err = tx.QueryRow(ctx,
 		`SELECT balance FROM accounts where name = 'Alice1'`).Scan(&alice1Balance)
@@ -42,24 +42,22 @@ func alice(conn *pgx.Conn) error {
 		return fmt.Errorf("QueryRow failed: %v\n", err)
 	}
 
-	fmt.Printf("Alice1 account balance: %f\n", alice1Balance)
+	fmt.Printf("READ account Alice1 balance = %f\n", alice1Balance)
 
-	fmt.Printf("READ account Alice2\n") // CL_PAUSE_1
-	var alice2Balance float64
+	var alice2Balance float64 // CL_PAUSE_1
 	err = tx.QueryRow(ctx,
 		`SELECT balance FROM accounts where name = 'Alice2'`).Scan(&alice2Balance)
 	if err != nil {
 		tx.Rollback(ctx)
 		return fmt.Errorf("QueryRow failed: %v\n", err)
 	}
-
-	fmt.Printf("Alice2 account balance: %f\n", alice2Balance)
+	fmt.Printf("READ account Alice2 balance = %f\n", alice2Balance)
 
 	// Now repeat the read... it is not repeatable so the total will be different
 
 	fmt.Printf("Total account balance = %f\n", alice1Balance+alice2Balance)
 
-	fmt.Printf("READ account Alice1\n")
+	fmt.Printf("RE-READ accounts...\n")
 	err = tx.QueryRow(ctx,
 		`SELECT balance FROM accounts where name = 'Alice1'`).Scan(&alice1Balance)
 	if err != nil {
@@ -67,17 +65,17 @@ func alice(conn *pgx.Conn) error {
 		return fmt.Errorf("QueryRow failed: %v\n", err)
 	}
 
-	fmt.Printf("Alice1 account balance: %f\n", alice1Balance)
+	fmt.Printf("Alice1 account balance now: %f\n", alice1Balance)
 
-	fmt.Printf("READ account Alice2\n")
 	err = tx.QueryRow(ctx,
 		`SELECT balance FROM accounts where name = 'Alice2'`).Scan(&alice2Balance)
 	if err != nil {
 		tx.Rollback(ctx)
 		return fmt.Errorf("QueryRow failed: %v\n", err)
 	}
+	fmt.Printf("Alice2 account balance now: %f\n", alice2Balance)
 
-	fmt.Printf("Total account balance = %f\n", alice1Balance+alice2Balance)
+	fmt.Printf("Total account balance now = %f\n", alice1Balance+alice2Balance)
 
 	fmt.Printf("COMMIT\n")
 	err = tx.Commit(ctx)
