@@ -20,13 +20,28 @@ func readModifyWrite(conn *pgx.Conn) error {
 	var unreadCount int
 	ctx := context.Background()
 
-	// create transaction
-	fmt.Printf("BEGIN\n")
-	tx, err := conn.Begin(ctx)
+	// create transaction - using repeatable read will avoid this bug by automatically catching this situation
+	// and aborting the first transaction.
+	fmt.Printf("BEGIN ISOLATION LEVEL REPEATABLE READ\n")
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead,
+	})
 	if err != nil {
 		tx.Rollback(ctx)
 		return err
 	}
+
+	// create transaction without repeatable read
+	/*
+		fmt.Printf("BEGIN\n")
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			tx.Rollback(ctx)
+			return err
+		}
+	*/
+
+	// also this bug can be avoided by using SELECT FOR UPDATE
 
 	err = tx.QueryRow(ctx,
 		`SELECT unread FROM user_email_stats where user_id = $1

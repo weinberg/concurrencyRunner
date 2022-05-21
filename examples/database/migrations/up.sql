@@ -34,3 +34,24 @@ CREATE TABLE IF NOT EXISTS accounts
     balance float
 );
 
+CREATE TABLE IF NOT EXISTS shift
+(
+    id      serial
+        CONSTRAINT shift_pk PRIMARY KEY
+);
+
+CREATE TABLE IF NOT EXISTS employee
+(
+    id      serial
+        CONSTRAINT employee_pk PRIMARY KEY,
+    name    text
+);
+
+CREATE TABLE IF NOT EXISTS employee_shift
+(
+    shift_id integer
+        CONSTRAINT employee_shift___fk_shift_id REFERENCES shift ON DELETE CASCADE,
+    employee_id integer
+        CONSTRAINT employee_shift__fk_employee_id REFERENCES employee ON DELETE CASCADE
+);
+

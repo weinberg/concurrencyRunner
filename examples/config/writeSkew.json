@@ -1,0 +1,52 @@
+{
+  "instances": [
+    {
+      "id": "1",
+      "name": "Employee 1",
+      "adapter": "delve",
+      "program": "github.com/weinberg/concurrencyRunner/examples/cmd/writeSkew",
+      "args": ["-user","alice"],
+      "env": "DATABASE_URL=postgres://postgres:pass@localhost:5433/postgres",
+      "cwd": "/Users/josh/dev/concurrencyRunner/examples",
+      "srcRoot": ""
+    },
+    {
+      "id": "2",
+      "name": "Employee 2",
+      "adapter": "delve",
+      "program": "github.com/weinberg/concurrencyRunner/examples/cmd/writeSkew",
+      "args": ["-user","bob"],
+      "env": "DATABASE_URL=postgres://postgres:pass@localhost:5433/postgres",
+      "cwd": "/Users/josh/dev/concurrencyRunner/examples",
+      "srcRoot": ""
+    }
+  ],
+  "sequence": [
+    {
+      "instanceId": "1",
+      "action": "run"
+    },
+    {
+      "instanceId": "1",
+      "action": "pause",
+      "file": "cmd/writeSkew/main.go",
+      "targetComment": "CL_PAUSE_1"
+    },
+    {
+      "instanceId": "2",
+      "action": "run"
+    },
+    {
+      "action": "sleep",
+      "duration": 1
+    },
+    {
+      "instanceId": "1",
+      "action": "continue"
+    },
+    {
+      "action": "sleep",
+      "duration": 1
+    }
+  ]
+}
